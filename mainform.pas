@@ -43,6 +43,7 @@ type
     cboUnderline: TCheckBox;
     cboShowGrid: TCheckBox;
     cboShowBaseline: TCheckBox;
+    chkPreviewSoftBaseline: TCheckBox;
     chkShowAscender: TCheckBox;
     chkShowDescender: TCheckBox;
     chkShowXHeight: TCheckBox;
@@ -111,6 +112,7 @@ type
     dlgSave: TSaveDialog;
     dlgOpen: TOpenDialog;
     sbCharEdit: TScrollBox;
+    sbPreview: TScrollBox;
     mnuSep8: TMenuItem;
     spnAscent: TSpinEdit;
     spnCustomCharSet: TSpinEdit;
@@ -146,6 +148,7 @@ type
     procedure cboShowGridChange(Sender: TObject);
     procedure cmbCharSetChange(Sender: TObject);
     procedure CustomCharSetChange(Sender: TObject);
+    procedure chkPreviewSoftBaselineChange(Sender: TObject);
     procedure chkLineMarkerChange(Sender: TObject);
     procedure mnuScriptClick(Sender: TObject);
     procedure spnLineMarkerChange(Sender: TObject);
@@ -195,6 +198,7 @@ type
     FCurrentFile: string;
     FShowGrid: Boolean;
     FShowBaseline: Boolean;
+    FPreviewSoftBaseline: Boolean;
     FClipboardBitmap: TBitmap;
     FInitializing: Boolean;
     FUpdatingCharSelection: Boolean;
@@ -228,6 +232,7 @@ type
     procedure SetCurrentChar(CharCode: Integer);
     procedure UpdateCharList;
     procedure UpdatePreview;
+    procedure UpdatePreviewSize;
     procedure UpdateStatus;
     procedure UpdateTitle;
     procedure UpdateLineMarkerDisplay;
@@ -653,6 +658,7 @@ begin
   FCurrentFile := '';
   FShowGrid := True;
   FShowBaseline := True;
+  FPreviewSoftBaseline := False;
   FClipboardBitmap := nil;
   FUpdatingCharSelection := False;
   
@@ -697,6 +703,7 @@ begin
   edtPreviewText.Text := 'Hello World! ABC abc 123';
   cboShowGrid.Checked := True;
   cboShowBaseline.Checked := True;
+  chkPreviewSoftBaseline.Checked := False;
   
   for I := 32 to 127 do EnsureCharBitmap(I);
   
@@ -1294,51 +1301,279 @@ begin
   UpdatePreview;
 end;
 
+procedure TfrmMain.chkPreviewSoftBaselineChange(Sender: TObject);
+begin
+  FPreviewSoftBaseline := chkPreviewSoftBaseline.Checked;
+  UpdatePreview;
+end;
+
 procedure TfrmMain.pnlPreviewPaint(Sender: TObject);
 var
-  I, X, Y, CharX, Scale, CharCode: Integer;
+  I, TokenStart, TokenEnd, TokenIndex, CharX, CharY, Scale, CharCode, CharWidth, MaxX, LineHeight: Integer;
   PreviewBytes: string;
   Bmp: TBitmap;
   PB: TPaintBox;
+
+  procedure DrawBaseline;
+  var
+    DashX, BaseY: Integer;
+  begin
+    if FPreviewSoftBaseline then
+    begin
+      BaseY := CharY + spnAscent.Value * Scale;
+      PB.Canvas.Brush.Color := clSilver;
+      for DashX := 0 to PB.Width div 4 do
+        PB.Canvas.FillRect(DashX * 4, BaseY, DashX * 4 + 1, BaseY + 1);
+      Exit;
+    end
+    else
+      PB.Canvas.Pen.Color := clRed;
+    PB.Canvas.Pen.Style := psDot;
+    PB.Canvas.MoveTo(0, CharY + spnAscent.Value * Scale);
+    PB.Canvas.LineTo(PB.Width, CharY + spnAscent.Value * Scale);
+  end;
+
+  function IsPreviewWhitespace(CharCode: Integer): Boolean;
+  begin
+    Result := (CharCode = 9) or (CharCode = 32);
+  end;
+
+  function GetPreviewCharWidth(CharCode: Integer): Integer;
+  var
+    CharBmp: TBitmap;
+  begin
+    CharBmp := FCharBitmaps[CharCode];
+    if CharBmp <> nil then
+      Result := (CharBmp.Width + 1) * Scale
+    else
+      Result := 8 * Scale;
+  end;
+
+  function GetPreviewTokenWidth(StartIndex, EndIndex: Integer): Integer;
+  var
+    TokenIndex: Integer;
+  begin
+    Result := 0;
+    for TokenIndex := StartIndex to EndIndex do
+      Inc(Result, GetPreviewCharWidth(Ord(PreviewBytes[TokenIndex])));
+  end;
+
+  procedure NewPreviewLine;
+  begin
+    if not FPreviewSoftBaseline then DrawBaseline;
+    CharX := 8;
+    Inc(CharY, LineHeight);
+    if FPreviewSoftBaseline then DrawBaseline;
+  end;
+
+  procedure DrawPreviewChar(CharCode: Integer);
+  var
+    X, Y: Integer;
+  begin
+    Bmp := FCharBitmaps[CharCode];
+    if Bmp <> nil then
+    begin
+      for Y := 0 to Bmp.Height - 1 do
+        for X := 0 to Bmp.Width - 1 do
+          if Bmp.Canvas.Pixels[X, Y] = clBlack then
+          begin
+            PB.Canvas.Brush.Color := clBlack;
+            PB.Canvas.FillRect(CharX + X * Scale, CharY + Y * Scale, CharX + X * Scale + Scale, CharY + Y * Scale + Scale);
+          end;
+    end;
+    Inc(CharX, GetPreviewCharWidth(CharCode));
+  end;
+
 begin
   PB := TPaintBox(Sender);
   Scale := 2;
+  MaxX := PB.Width - 8;
+  LineHeight := (spnHeight.Value + 2) * Scale;
   CharX := 8;
+  CharY := 8;
   with PB.Canvas do
   begin
     Brush.Color := clWhite;
     FillRect(0, 0, PB.Width, PB.Height);
+    if FPreviewSoftBaseline then
+      DrawBaseline;
     PreviewBytes := GetPreviewBytes(edtPreviewText.Text);
-    for I := 1 to Length(PreviewBytes) do
+    I := 1;
+    while I <= Length(PreviewBytes) do
     begin
       CharCode := Ord(PreviewBytes[I]);
-      Bmp := FCharBitmaps[CharCode];
-      if Bmp <> nil then
+      if CharCode = 13 then
       begin
-        for Y := 0 to Bmp.Height - 1 do
-          for X := 0 to Bmp.Width - 1 do
-            if Bmp.Canvas.Pixels[X, Y] = clBlack then
-            begin
-              Brush.Color := clBlack;
-              FillRect(CharX + X * Scale, 8 + Y * Scale, CharX + X * Scale + Scale, 8 + Y * Scale + Scale);
-            end;
-        CharX := CharX + (Bmp.Width + 1) * Scale;
+        Inc(I);
+        Continue;
+      end;
+      if CharCode = 10 then
+      begin
+        NewPreviewLine;
+        Inc(I);
+        Continue;
+      end;
+
+      TokenStart := I;
+      if IsPreviewWhitespace(CharCode) then
+      begin
+        while (I <= Length(PreviewBytes)) and IsPreviewWhitespace(Ord(PreviewBytes[I])) do
+          Inc(I);
+        TokenEnd := I - 1;
       end
-      else CharX := CharX + 8 * Scale;
-      if CharX > PB.Width - 20 then Break;
+      else
+      begin
+        while (I <= Length(PreviewBytes)) and
+          (not IsPreviewWhitespace(Ord(PreviewBytes[I]))) and
+          (Ord(PreviewBytes[I]) <> 10) and
+          (Ord(PreviewBytes[I]) <> 13) do
+          Inc(I);
+        TokenEnd := I - 1;
+      end;
+
+      CharWidth := GetPreviewTokenWidth(TokenStart, TokenEnd);
+      if IsPreviewWhitespace(Ord(PreviewBytes[TokenStart])) and (CharX = 8) then Continue;
+      if (CharX > 8) and (CharX + CharWidth > MaxX) then
+      begin
+        NewPreviewLine;
+        if IsPreviewWhitespace(Ord(PreviewBytes[TokenStart])) then Continue;
+      end;
+
+      if (CharWidth > MaxX - 8) and (not IsPreviewWhitespace(Ord(PreviewBytes[TokenStart]))) then
+      begin
+        for TokenIndex := TokenStart to TokenEnd do
+        begin
+          CharCode := Ord(PreviewBytes[TokenIndex]);
+          CharWidth := GetPreviewCharWidth(CharCode);
+          if (CharX > 8) and (CharX + CharWidth > MaxX) then
+            NewPreviewLine;
+          DrawPreviewChar(CharCode);
+        end;
+      end
+      else
+        for TokenIndex := TokenStart to TokenEnd do
+          DrawPreviewChar(Ord(PreviewBytes[TokenIndex]));
     end;
-    if FShowBaseline then
-    begin
-      Pen.Color := clRed; Pen.Style := psDot;
-      MoveTo(0, 8 + spnAscent.Value * Scale);
-      LineTo(PB.Width, 8 + spnAscent.Value * Scale);
-    end;
+    if not FPreviewSoftBaseline then
+      DrawBaseline;
   end;
 end;
 
 procedure TfrmMain.UpdatePreview;
 begin
+  UpdatePreviewSize;
   pnlPreview.Invalidate;
+end;
+
+procedure TfrmMain.UpdatePreviewSize;
+var
+  I, TokenStart, TokenEnd, TokenIndex, CharCode, PreviewHeight, PreviewWidth, CharX, CharWidth, MaxX, Scale, LineHeight: Integer;
+  PreviewBytes: string;
+
+  function IsPreviewWhitespace(CharCode: Integer): Boolean;
+  begin
+    Result := (CharCode = 9) or (CharCode = 32);
+  end;
+
+  function GetPreviewCharWidth(CharCode: Integer): Integer;
+  var
+    CharBmp: TBitmap;
+  begin
+    CharBmp := FCharBitmaps[CharCode];
+    if CharBmp <> nil then
+      Result := (CharBmp.Width + 1) * Scale
+    else
+      Result := 8 * Scale;
+  end;
+
+  function GetPreviewTokenWidth(StartIndex, EndIndex: Integer): Integer;
+  var
+    TokenIndex: Integer;
+  begin
+    Result := 0;
+    for TokenIndex := StartIndex to EndIndex do
+      Inc(Result, GetPreviewCharWidth(Ord(PreviewBytes[TokenIndex])));
+  end;
+
+  procedure NewPreviewLine;
+  begin
+    CharX := 8;
+    Inc(PreviewHeight, LineHeight);
+  end;
+
+begin
+  Scale := 2;
+  PreviewWidth := 404;
+  if sbPreview <> nil then
+    PreviewWidth := sbPreview.ClientWidth;
+  if PreviewWidth < 16 then
+    PreviewWidth := 16;
+
+  MaxX := PreviewWidth - 8;
+  LineHeight := (spnHeight.Value + 2) * Scale;
+  PreviewHeight := 16 + spnHeight.Value * Scale;
+  CharX := 8;
+  PreviewBytes := GetPreviewBytes(edtPreviewText.Text);
+  I := 1;
+  while I <= Length(PreviewBytes) do
+  begin
+    CharCode := Ord(PreviewBytes[I]);
+    if CharCode = 13 then
+    begin
+      Inc(I);
+      Continue;
+    end;
+    if CharCode = 10 then
+    begin
+      NewPreviewLine;
+      Inc(I);
+      Continue;
+    end;
+
+    TokenStart := I;
+    if IsPreviewWhitespace(CharCode) then
+    begin
+      while (I <= Length(PreviewBytes)) and IsPreviewWhitespace(Ord(PreviewBytes[I])) do
+        Inc(I);
+      TokenEnd := I - 1;
+    end
+    else
+    begin
+      while (I <= Length(PreviewBytes)) and
+        (not IsPreviewWhitespace(Ord(PreviewBytes[I]))) and
+        (Ord(PreviewBytes[I]) <> 10) and
+        (Ord(PreviewBytes[I]) <> 13) do
+        Inc(I);
+      TokenEnd := I - 1;
+    end;
+
+    CharWidth := GetPreviewTokenWidth(TokenStart, TokenEnd);
+    if IsPreviewWhitespace(Ord(PreviewBytes[TokenStart])) and (CharX = 8) then Continue;
+    if (CharX > 8) and (CharX + CharWidth > MaxX) then
+    begin
+      NewPreviewLine;
+      if IsPreviewWhitespace(Ord(PreviewBytes[TokenStart])) then Continue;
+    end;
+
+    if (CharWidth > MaxX - 8) and (not IsPreviewWhitespace(Ord(PreviewBytes[TokenStart]))) then
+    begin
+      for TokenIndex := TokenStart to TokenEnd do
+      begin
+        CharCode := Ord(PreviewBytes[TokenIndex]);
+        CharWidth := GetPreviewCharWidth(CharCode);
+        if (CharX > 8) and (CharX + CharWidth > MaxX) then
+          NewPreviewLine;
+        Inc(CharX, CharWidth);
+      end;
+    end
+    else
+      Inc(CharX, CharWidth);
+  end;
+
+  pnlPreview.Width := PreviewWidth;
+  if (sbPreview <> nil) and (PreviewHeight < sbPreview.ClientHeight) then
+    PreviewHeight := sbPreview.ClientHeight;
+  pnlPreview.Height := PreviewHeight;
 end;
 
 procedure TfrmMain.spnHeightChange(Sender: TObject);

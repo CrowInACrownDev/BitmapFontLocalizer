@@ -280,11 +280,11 @@ object frmMain: TfrmMain
   end
   object gbCharEditor: TGroupBox
     Left = 322
-    Height = 462
+    Height = 480
     Top = 8
     Width = 418
     Caption = 'Character Editor'
-    ClientHeight = 442
+    ClientHeight = 460
     ClientWidth = 414
     TabOrder = 2
     object lblCurrentChar: TLabel
@@ -477,10 +477,10 @@ object frmMain: TfrmMain
     Left = 320
     Height = 212
     Top = 504
-    Width = 420
+    Width = 724
     Caption = 'Preview'
     ClientHeight = 192
-    ClientWidth = 416
+    ClientWidth = 720
     TabOrder = 3
     object lblPreviewText: TLabel
       Left = 8
@@ -493,16 +493,39 @@ object frmMain: TfrmMain
       Left = 40
       Height = 23
       Top = 0
-      Width = 370
+      Width = 580
       TabOrder = 0
       OnChange = edtPreviewTextChange
     end
-    object pnlPreview: TPaintBox
+    object chkPreviewSoftBaseline: TCheckBox
+      Left = 632
+      Height = 19
+      Top = 2
+      Width = 76
+      Caption = 'Soft base'
+      TabOrder = 1
+      OnChange = chkPreviewSoftBaselineChange
+    end
+    object sbPreview: TScrollBox
       Left = 2
       Height = 148
       Top = 32
-      Width = 408
-      OnPaint = pnlPreviewPaint
+      Width = 712
+      HorzScrollBar.Visible = False
+      VertScrollBar.Increment = 20
+      VertScrollBar.Page = 120
+      VertScrollBar.Smooth = True
+      VertScrollBar.Tracking = True
+      ClientHeight = 144
+      ClientWidth = 708
+      TabOrder = 2
+      object pnlPreview: TPaintBox
+        Left = 0
+        Height = 144
+        Top = 0
+        Width = 708
+        OnPaint = pnlPreviewPaint
+      end
     end
   end
   object gbLineMarkers: TGroupBox
