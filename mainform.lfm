@@ -597,9 +597,14 @@ object frmMain: TfrmMain
         OnClick = btnLoadFontClick
       end
       object mnuSave: TMenuItem
-        Caption = '&Save...'
+        Caption = '&Save'
         ShortCut = 16467
         OnClick = btnSaveFontClick
+      end
+      object mnuSaveAs: TMenuItem
+        Caption = 'Save &As...'
+        ShortCut = 24659
+        OnClick = mnuSaveAsClick
       end
       object mnuSep1: TMenuItem
         Caption = '-'

@@ -77,6 +77,7 @@ type
     mnuNew: TMenuItem;
     mnuOpen: TMenuItem;
     mnuSave: TMenuItem;
+    mnuSaveAs: TMenuItem;
     mnuSep1: TMenuItem;
     mnuExit: TMenuItem;
     mnuUndo: TMenuItem;
@@ -147,6 +148,7 @@ type
       ARect: TRect; State: TOwnerDrawState);
     procedure mnuAboutClick(Sender: TObject);
     procedure mnuExitClick(Sender: TObject);
+    procedure mnuSaveAsClick(Sender: TObject);
     procedure mnuFontMetricsClick(Sender: TObject);
     procedure mnuGenerateFromFontClick(Sender: TObject);
     procedure mnuIncreaseWidthClick(Sender: TObject);
@@ -200,6 +202,7 @@ type
     // Remember last dialog filter
     FLastOpenFilterIndex: Integer;
     FLastSaveFilterIndex: Integer;
+    FCurrentSaveFilterIndex: Integer;
 
     // Scripting support
     FFontAPI: TFontScriptAPI;
@@ -219,6 +222,10 @@ type
     function GetPixelAt(SX, SY: Integer; out PX, PY: Integer): Boolean;
     procedure EnsureCharBitmap(Idx: Integer);
     procedure SaveUndoState;
+    function AddDefaultSaveExtension(const FileName: string; SaveFilterIndex: Integer): string;
+    procedure ConfigureSaveDialog;
+    function SaveFontAs: Boolean;
+    procedure SaveFontToFile(const SaveFileName: string; SaveFilterIndex: Integer);
     procedure LoadFONFile(const FN: string);
     procedure LoadFNTFile(const FN: string);
     procedure SaveFNTFile(const FN: string);
@@ -386,6 +393,7 @@ begin
   // Default filter indices
   FLastOpenFilterIndex := 1;
   FLastSaveFilterIndex := 1;
+  FCurrentSaveFilterIndex := 1;
   
   for I := 0 to 255 do
   begin
@@ -1402,6 +1410,9 @@ begin
     end;
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 2;
+    if SameText(ExtractFileExt(FN), '.ROM') then
+      FCurrentSaveFilterIndex := 3;
     FCurrentChar := 65;
     UpdateCharList;
     lstCharsClick(nil);
@@ -1537,6 +1548,7 @@ begin
       FCharEnabled[I] := FCharBitmaps[I] <> nil;
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 4;
     FCurrentChar := 65;
     UpdateCharList;
     lstCharsClick(nil);
@@ -1640,6 +1652,7 @@ begin
       FCharEnabled[I] := (I >= FCharRangeStart) and (I <= FCharRangeEnd);
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 5;
     FCurrentChar := 65;
     UpdateCharList;
     lstCharsClick(nil);
@@ -1737,6 +1750,7 @@ begin
       FCharEnabled[I] := (I >= FCharRangeStart) and (I <= FCharRangeEnd);
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 7;
     FCurrentChar := 65;
     UpdateCharList;
     lstCharsClick(nil);
@@ -2016,6 +2030,7 @@ begin
     end;
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 1;
     FCurrentChar := FONFont.FirstChar;
     if FCurrentChar < 32 then FCurrentChar := 32;
     UpdateCharList;
@@ -2028,11 +2043,23 @@ begin
   end;
 end;
 
-procedure TfrmMain.btnSaveFontClick(Sender: TObject);
-var
-  I: Integer;
-  PF: TFontPitchFamily;
-  SaveFileName: string;
+function TfrmMain.AddDefaultSaveExtension(const FileName: string; SaveFilterIndex: Integer): string;
+begin
+  Result := FileName;
+  if ExtractFileExt(Result) <> '' then Exit;
+
+  case SaveFilterIndex of
+    1: Result := Result + '.FON';
+    2: Result := Result + '.FNT';
+    3: Result := Result + '.ROM';
+    4: Result := Result + '.M8';
+    5: Result := Result + '.RTF';
+    6: Result := Result + '.FNT';  // APL
+    7: Result := Result + '.FNT';  // Amiga
+  end;
+end;
+
+procedure TfrmMain.ConfigureSaveDialog;
 begin
   // Filter indices: 1=FON, 2=FNT, 3=ROM, 4=Deluxe Paint, 5=TEGL, 6=APL, 7=Amiga, 8=All
   dlgSave.Filter := 'Windows FON Files (*.FON)|*.FON|' +
@@ -2043,30 +2070,43 @@ begin
                     'APL/Veridian Fonts (*.FNT)|*.FNT|' +
                     'Amiga Fonts (*.FNT)|*.FNT|' +
                     'All Files (*.*)|*.*';
-  dlgSave.FileName := edtFontName.Text;
-  dlgSave.FilterIndex := FLastSaveFilterIndex;
-  
+end;
+
+function TfrmMain.SaveFontAs: Boolean;
+var
+  SaveFileName: string;
+begin
+  Result := False;
+  ConfigureSaveDialog;
+  if FCurrentFile <> '' then
+  begin
+    dlgSave.InitialDir := ExtractFilePath(FCurrentFile);
+    dlgSave.FileName := ExtractFileName(FCurrentFile);
+    dlgSave.FilterIndex := FCurrentSaveFilterIndex;
+  end
+  else
+  begin
+    dlgSave.InitialDir := '';
+    dlgSave.FileName := edtFontName.Text;
+    dlgSave.FilterIndex := FLastSaveFilterIndex;
+  end;
+
   if dlgSave.Execute then
   begin
     FLastSaveFilterIndex := dlgSave.FilterIndex;
-    SaveFileName := dlgSave.FileName;
-    
-    // Add default extension based on filter if none provided
-    if ExtractFileExt(SaveFileName) = '' then
-    begin
-      case dlgSave.FilterIndex of
-        1: SaveFileName := SaveFileName + '.FON';
-        2: SaveFileName := SaveFileName + '.FNT';
-        3: SaveFileName := SaveFileName + '.ROM';
-        4: SaveFileName := SaveFileName + '.M8';
-        5: SaveFileName := SaveFileName + '.RTF';
-        6: SaveFileName := SaveFileName + '.FNT';  // APL
-        7: SaveFileName := SaveFileName + '.FNT';  // Amiga
-      end;
-    end;
-    
-    // Save based on selected filter, not extension
-    case dlgSave.FilterIndex of
+    SaveFileName := AddDefaultSaveExtension(dlgSave.FileName, dlgSave.FilterIndex);
+    SaveFontToFile(SaveFileName, dlgSave.FilterIndex);
+    Result := not FModified;
+  end;
+end;
+
+procedure TfrmMain.SaveFontToFile(const SaveFileName: string; SaveFilterIndex: Integer);
+var
+  I: Integer;
+  PF: TFontPitchFamily;
+begin
+  // Save based on selected filter, not extension
+  case SaveFilterIndex of
       1: // Windows FON
         begin
           try
@@ -2089,6 +2129,7 @@ begin
             for I := 0 to 255 do if FCharBitmaps[I] <> nil then FCreator.SetCharacter(I, FCharBitmaps[I]);
             FCreator.SaveToFile(SaveFileName);
             FCurrentFile := SaveFileName;
+            FCurrentSaveFilterIndex := SaveFilterIndex;
             SetModified(False);
             UpdateStatus;
             StatusBar.Panels[0].Text := 'Saved FON: ' + ExtractFileName(SaveFileName);
@@ -2101,6 +2142,7 @@ begin
         begin
           try
             SaveFNTFile(SaveFileName);
+            FCurrentSaveFilterIndex := SaveFilterIndex;
           except
             on E: Exception do ShowMessage('Error saving FNT: ' + E.Message);
           end;
@@ -2110,6 +2152,7 @@ begin
         begin
           try
             SaveDPFontFile(SaveFileName);
+            FCurrentSaveFilterIndex := SaveFilterIndex;
           except
             on E: Exception do ShowMessage('Error saving Deluxe Paint font: ' + E.Message);
           end;
@@ -2119,6 +2162,7 @@ begin
         begin
           try
             SaveTEGLFontFile(SaveFileName);
+            FCurrentSaveFilterIndex := SaveFilterIndex;
           except
             on E: Exception do ShowMessage('Error saving TEGL font: ' + E.Message);
           end;
@@ -2128,6 +2172,7 @@ begin
         begin
           try
             SaveAPLFontFile(SaveFileName);
+            FCurrentSaveFilterIndex := SaveFilterIndex;
           except
             on E: Exception do ShowMessage('Error saving APL font: ' + E.Message);
           end;
@@ -2137,6 +2182,7 @@ begin
         begin
           try
             SaveAmigaFontFile(SaveFileName);
+            FCurrentSaveFilterIndex := SaveFilterIndex;
           except
             on E: Exception do ShowMessage('Error saving Amiga font: ' + E.Message);
           end;
@@ -2165,6 +2211,7 @@ begin
           for I := 0 to 255 do if FCharBitmaps[I] <> nil then FCreator.SetCharacter(I, FCharBitmaps[I]);
           FCreator.SaveToFile(SaveFileName);
           FCurrentFile := SaveFileName;
+          FCurrentSaveFilterIndex := SaveFilterIndex;
           SetModified(False);
           UpdateStatus;
           StatusBar.Panels[0].Text := 'Saved: ' + ExtractFileName(SaveFileName);
@@ -2172,8 +2219,20 @@ begin
           on E: Exception do ShowMessage('Error: ' + E.Message);
         end;
       end;
-    end;
   end;
+end;
+
+procedure TfrmMain.btnSaveFontClick(Sender: TObject);
+begin
+  if FCurrentFile <> '' then
+    SaveFontToFile(FCurrentFile, FCurrentSaveFilterIndex)
+  else
+    SaveFontAs;
+end;
+
+procedure TfrmMain.mnuSaveAsClick(Sender: TObject);
+begin
+  SaveFontAs;
 end;
 
 procedure TfrmMain.mnuNewClick(Sender: TObject);
@@ -2189,6 +2248,7 @@ begin
   spnAscent.Value := 10;
   for I := 32 to 127 do EnsureCharBitmap(I);
   FCurrentFile := '';
+  FCurrentSaveFilterIndex := 1;
   FCurrentChar := 65;
   UpdateCharList;
   lstCharsClick(nil);
@@ -2240,6 +2300,7 @@ begin
         end;
         edtFontName.Text := FontDlg.Font.Name;
         FCurrentFile := '';
+        FCurrentSaveFilterIndex := 1;
         FCurrentChar := 65;
         UpdateCharList;
         lstCharsClick(nil);
@@ -2902,6 +2963,7 @@ begin
       FCharEnabled[I] := FCharBitmaps[I] <> nil;
     
     FCurrentFile := FN;
+    FCurrentSaveFilterIndex := 6;
     FCurrentChar := FirstChar;  // Start at first available character
     UpdateCharList;
     lstCharsClick(nil);
