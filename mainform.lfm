@@ -200,14 +200,39 @@ object frmMain: TfrmMain
       TabOrder = 2
       OnClick = btnApplyRangeClick
     end
+    object lblCharsLow: TLabel
+      Left = 8
+      Height = 15
+      Top = 32
+      Width = 38
+      Caption = '32-127'
+    end
+    object lblCharsHigh: TLabel
+      Left = 154
+      Height = 15
+      Top = 32
+      Width = 44
+      Caption = '128-255'
+    end
     object lstChars: TListBox
       Left = 8
-      Height = 412
-      Top = 32
-      Width = 283
+      Height = 392
+      Top = 52
+      Width = 140
       ItemHeight = 0
-      ScrollWidth = 250
+      ScrollWidth = 130
       TabOrder = 3
+      OnClick = lstCharsClick
+      OnDrawItem = lstCharsDrawItem
+    end
+    object lstCharsHigh: TListBox
+      Left = 154
+      Height = 392
+      Top = 52
+      Width = 140
+      ItemHeight = 0
+      ScrollWidth = 130
+      TabOrder = 4
       OnClick = lstCharsClick
       OnDrawItem = lstCharsDrawItem
     end

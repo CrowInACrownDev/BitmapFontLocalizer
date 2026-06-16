@@ -64,10 +64,13 @@ type
     lblZoom: TLabel;
     lblPreviewText: TLabel;
     lblCharWidth: TLabel;
+    lblCharsHigh: TLabel;
+    lblCharsLow: TLabel;
     lblRangeStart: TLabel;
     lblRangeTo: TLabel;
     lblLineValues: TLabel;
     lstChars: TListBox;
+    lstCharsHigh: TListBox;
     MainMenu: TMainMenu;
     mnuScript: TMenuItem;
     mnuFile: TMenuItem;
@@ -185,6 +188,7 @@ type
     FShowBaseline: Boolean;
     FClipboardBitmap: TBitmap;
     FInitializing: Boolean;
+    FUpdatingCharSelection: Boolean;
     
     // Character range
     FCharRangeStart: Integer;
@@ -208,6 +212,10 @@ type
     FFontAPI: TFontScriptAPI;
     FScriptManagerForm: TfrmScriptManager;
 
+    procedure FillCharList(CharList: TListBox; StartChar, EndChar: Integer);
+    procedure InvalidateCharLists;
+    procedure SelectCharInLists(CharCode: Integer);
+    procedure SetCurrentChar(CharCode: Integer);
     procedure UpdateCharList;
     procedure UpdatePreview;
     procedure UpdateStatus;
@@ -377,6 +385,7 @@ begin
   FShowGrid := True;
   FShowBaseline := True;
   FClipboardBitmap := nil;
+  FUpdatingCharSelection := False;
   
   // Character range
   FCharRangeStart := 32;
@@ -424,6 +433,8 @@ begin
   
   lstChars.Style := lbOwnerDrawFixed;
   lstChars.ItemHeight := 20;
+  lstCharsHigh.Style := lbOwnerDrawFixed;
+  lstCharsHigh.ItemHeight := 20;
   
   UpdateCharList;
   UpdateStatus;
@@ -593,27 +604,74 @@ begin
   SetModified(True);
 end;
 
-procedure TfrmMain.UpdateCharList;
+procedure TfrmMain.FillCharList(CharList: TListBox; StartChar, EndChar: Integer);
 var
-  I, SelIdx: Integer;
+  I: Integer;
 begin
-  lstChars.Items.BeginUpdate;
+  CharList.Items.BeginUpdate;
   try
-    lstChars.Items.Clear;
-    SelIdx := -1;
-    for I := 0 to 255 do
-    begin
-      if FCharEnabled[I] then
-      begin
-        lstChars.Items.AddObject(IntToStr(I), TObject(PtrInt(I)));
-        if I = FCurrentChar then
-          SelIdx := lstChars.Items.Count - 1;
-      end;
-    end;
-    lstChars.ItemIndex := SelIdx;
+    CharList.Items.Clear;
+    for I := StartChar to EndChar do
+      CharList.Items.AddObject(IntToStr(I), TObject(PtrInt(I)));
   finally
-    lstChars.Items.EndUpdate;
+    CharList.Items.EndUpdate;
   end;
+end;
+
+procedure TfrmMain.InvalidateCharLists;
+begin
+  lstChars.Invalidate;
+  lstCharsHigh.Invalidate;
+end;
+
+procedure TfrmMain.SelectCharInLists(CharCode: Integer);
+var
+  I: Integer;
+begin
+  FUpdatingCharSelection := True;
+  try
+    lstChars.ItemIndex := -1;
+    lstCharsHigh.ItemIndex := -1;
+    for I := 0 to lstChars.Items.Count - 1 do
+      if PtrInt(lstChars.Items.Objects[I]) = CharCode then
+      begin
+        lstChars.ItemIndex := I;
+        Exit;
+      end;
+    for I := 0 to lstCharsHigh.Items.Count - 1 do
+      if PtrInt(lstCharsHigh.Items.Objects[I]) = CharCode then
+      begin
+        lstCharsHigh.ItemIndex := I;
+        Exit;
+      end;
+  finally
+    FUpdatingCharSelection := False;
+  end;
+end;
+
+procedure TfrmMain.SetCurrentChar(CharCode: Integer);
+begin
+  if (CharCode < 0) or (CharCode > 255) then Exit;
+
+  FCurrentChar := CharCode;
+  EnsureCharBitmap(FCurrentChar);
+  SelectCharInLists(FCurrentChar);
+  if (FCurrentChar >= 32) and (FCurrentChar <> 127) then
+    lblCurrentChar.Caption := Format('Editing: %d ''%s''', [FCurrentChar, GetCharText(FCurrentChar)])
+  else
+    lblCurrentChar.Caption := Format('Editing: %d', [FCurrentChar]);
+  spnCharWidth.Value := FCharBitmaps[FCurrentChar].Width;
+  UpdateEditorSize;
+  pnlCharEdit.Repaint;
+  UpdatePreview;
+  UpdateStatus;
+end;
+
+procedure TfrmMain.UpdateCharList;
+begin
+  FillCharList(lstChars, 32, 127);
+  FillCharList(lstCharsHigh, 128, 255);
+  SelectCharInLists(FCurrentChar);
 end;
 
 procedure TfrmMain.ApplyCharRange;
@@ -628,13 +686,7 @@ begin
     if FCharEnabled[I] then
       EnsureCharBitmap(I);
   
-  // Make sure current char is in range
-  if not FCharEnabled[FCurrentChar] then
-  begin
-    FCurrentChar := FCharRangeStart;
-    EnsureCharBitmap(FCurrentChar);
-  end;
-  
+  EnsureCharBitmap(FCurrentChar);
   UpdateCharList;
   lstCharsClick(nil);
 end;
@@ -650,19 +702,28 @@ end;
 procedure TfrmMain.lstCharsDrawItem(Control: TWinControl; Index: Integer;
   ARect: TRect; State: TOwnerDrawState);
 var
+  CharList: TListBox;
   CC: Integer;
   S: string;
   Bmp: TBitmap;
   X, Y, PS: Integer;
   HasContent: Boolean;
 begin
-  if (Index < 0) or (Index >= lstChars.Items.Count) then Exit;
-  CC := PtrInt(lstChars.Items.Objects[Index]);
-  with lstChars.Canvas do
+  if not (Control is TListBox) then Exit;
+
+  CharList := TListBox(Control);
+  if (Index < 0) or (Index >= CharList.Items.Count) then Exit;
+  CC := PtrInt(CharList.Items.Objects[Index]);
+  with CharList.Canvas do
   begin
     if odSelected in State then Brush.Color := clHighlight else Brush.Color := clWindow;
     FillRect(ARect);
-    if odSelected in State then Font.Color := clHighlightText else Font.Color := clWindowText;
+    if odSelected in State then
+      Font.Color := clHighlightText
+    else if FCharEnabled[CC] then
+      Font.Color := clWindowText
+    else
+      Font.Color := clGrayText;
     if (CC >= 32) and (CC <> 127) then S := Format('%3d ''%s''', [CC, GetCharText(CC)])
     else if CC = 127 then S := '127 DEL'
     else S := Format('%3d #%d', [CC, CC]);
@@ -683,21 +744,19 @@ begin
 end;
 
 procedure TfrmMain.lstCharsClick(Sender: TObject);
+var
+  CharList: TListBox;
 begin
-  if (lstChars.ItemIndex >= 0) and (lstChars.ItemIndex < lstChars.Items.Count) then
+  if FUpdatingCharSelection then Exit;
+
+  if Sender is TListBox then
   begin
-    FCurrentChar := PtrInt(lstChars.Items.Objects[lstChars.ItemIndex]);
-    EnsureCharBitmap(FCurrentChar);
-    if (FCurrentChar >= 32) and (FCurrentChar <> 127) then
-      lblCurrentChar.Caption := Format('Editing: %d ''%s''', [FCurrentChar, GetCharText(FCurrentChar)])
-    else
-      lblCurrentChar.Caption := Format('Editing: %d', [FCurrentChar]);
-    spnCharWidth.Value := FCharBitmaps[FCurrentChar].Width;
-    UpdateEditorSize;
-    pnlCharEdit.Repaint;
-    UpdatePreview;
-    UpdateStatus;
-  end;
+    CharList := TListBox(Sender);
+    if (CharList.ItemIndex >= 0) and (CharList.ItemIndex < CharList.Items.Count) then
+      SetCurrentChar(PtrInt(CharList.Items.Objects[CharList.ItemIndex]));
+  end
+  else
+    SetCurrentChar(FCurrentChar);
 end;
 
 procedure TfrmMain.UpdateEditorSize;
@@ -916,14 +975,14 @@ procedure TfrmMain.pnlCharEditMouseUp(Sender: TObject; Button: TMouseButton;
 begin
   FDrawing := False;
   UpdatePreview;
-  lstChars.Invalidate;
+  InvalidateCharLists;
 end;
 
 procedure TfrmMain.tmrPreviewTimer(Sender: TObject);
 begin
   tmrPreview.Enabled := False;
   UpdatePreview;
-  lstChars.Invalidate;
+  InvalidateCharLists;
 end;
 
 procedure TfrmMain.edtPreviewTextChange(Sender: TObject);
@@ -1016,7 +1075,7 @@ begin
   UpdateEditorSize;
   pnlCharEdit.Repaint;
   UpdatePreview;
-  lstChars.Invalidate;
+  InvalidateCharLists;
   SetModified(True);
 end;
 
@@ -1049,7 +1108,7 @@ begin
     Bmp.Canvas.FillRect(0, 0, Bmp.Width, Bmp.Height);
     pnlCharEdit.Repaint;
     UpdatePreview;
-    lstChars.Invalidate;
+    InvalidateCharLists;
     SetModified(True);
   end;
 end;
@@ -1071,7 +1130,7 @@ begin
     end;
     pnlCharEdit.Repaint;
     UpdatePreview;
-    lstChars.Invalidate;
+    InvalidateCharLists;
     SetModified(True);
   end;
 end;
@@ -1106,7 +1165,7 @@ begin
   UpdateEditorSize;
   pnlCharEdit.Repaint;
   UpdatePreview;
-  lstChars.Invalidate;
+  InvalidateCharLists;
   SetModified(True);
   StatusBar.Panels[0].Text := Format('Pasted to char %d', [FCurrentChar]);
 end;
@@ -1126,7 +1185,7 @@ begin
     Temp.Canvas.Draw(-1, 0, Bmp);
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnShiftRightClick(Sender: TObject);
@@ -1144,7 +1203,7 @@ begin
     Temp.Canvas.Draw(1, 0, Bmp);
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnShiftUpClick(Sender: TObject);
@@ -1162,7 +1221,7 @@ begin
     Temp.Canvas.Draw(0, -1, Bmp);
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnShiftDownClick(Sender: TObject);
@@ -1180,7 +1239,7 @@ begin
     Temp.Canvas.Draw(0, 1, Bmp);
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnInvertClick(Sender: TObject);
@@ -1195,7 +1254,7 @@ begin
     for X := 0 to Bmp.Width - 1 do
       if Bmp.Canvas.Pixels[X, Y] = clBlack then Bmp.Canvas.Pixels[X, Y] := clWhite
       else Bmp.Canvas.Pixels[X, Y] := clBlack;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnFlipHClick(Sender: TObject);
@@ -1216,7 +1275,7 @@ begin
         Temp.Canvas.Pixels[Bmp.Width - 1 - X, Y] := Bmp.Canvas.Pixels[X, Y];
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnFlipVClick(Sender: TObject);
@@ -1237,7 +1296,7 @@ begin
         Temp.Canvas.Pixels[X, Bmp.Height - 1 - Y] := Bmp.Canvas.Pixels[X, Y];
     Bmp.Assign(Temp);
   finally Temp.Free; end;
-  pnlCharEdit.Repaint; UpdatePreview; lstChars.Invalidate; SetModified(True);
+  pnlCharEdit.Repaint; UpdatePreview; InvalidateCharLists; SetModified(True);
 end;
 
 procedure TfrmMain.btnLoadFontClick(Sender: TObject);
@@ -2720,7 +2779,7 @@ procedure TfrmMain.cmbCharSetChange(Sender: TObject);
 begin
   if FInitializing then Exit;
 
-  lstChars.Invalidate;
+  InvalidateCharLists;
   lstCharsClick(nil);
   UpdatePreview;
 end;
@@ -3114,14 +3173,8 @@ end;
 
 procedure TfrmMain.ScriptSelectChar(CharCode: Integer);
 begin
-  if (CharCode >= 0) and (CharCode <= 255) and FCharEnabled[CharCode] then
-  begin
-    FCurrentChar := CharCode;
-    lstChars.ItemIndex := CharCode - FCharRangeStart;
-    spnCharWidth.Value := FCharBitmaps[CharCode].Width;
-    pnlCharEdit.Invalidate;
-    UpdateStatus;
-  end;
+  if (CharCode >= 0) and (CharCode <= 255) then
+    SetCurrentChar(CharCode);
 end;
 
 procedure TfrmMain.ScriptMarkModified;
