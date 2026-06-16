@@ -10,7 +10,7 @@ Improvements in this fork:
 
 - Extended Charset/Encoding support; Correct preview for non-default encoding.
 
-- Correctly write encoding byte when saving.
+- Correctly write selected encoding data when saving.
 
 - Character list now split into two columns, with latin on the left and additional characters on the right.
 
@@ -24,10 +24,14 @@ Minor fixes for original:
 
 - Better preview field with multiline support and option to hide red baseline.
 
-![f0b69b65-674d-49aa-8a84-204a75b5e81b](file:///C:/Users/golub/Pictures/Typedown/f0b69b65-674d-49aa-8a84-204a75b5e81b.png)
+Future plans:
 
+- Support for Unicode and BDF file format.
 
+<img width="1059" height="799" alt="image" src="https://github.com/user-attachments/assets/6ac46b56-7068-446f-83d6-a516f9d9abf5" />
 
-**Note:** This is the first time I see Pascal code in, like, 15 years. So i should admit, 100% of code lines in this fork is written by AI. However, I've added these edits in small chunks, checking and reviewing every single edit, so I can (in limits of my knowledge of Pascal) validate that there are no AI hallucinations or *very* unoptimal solutions in the code.
+---
 
+**Note:** This is the first time I see Pascal code in, like, 15 years. So i should admit, 100% of code lines in this fork are written by AI. However, I've added these edits in small chunks, checking and reviewing every single edit, so I can (in limits of my knowledge of Pascal) validate that there are no AI hallucinations or *very* unoptimal solutions in the code.
+I see no problems in this, as this is small personal project of upgrading a tool I found convenient for my own working pipeline. But I think it's fair to warn anyone whom this may concern.
 
