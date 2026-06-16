@@ -7,10 +7,16 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
   Spin, ComCtrls, Menus, LCLType, FONCreator, WinFont, DPFont, TEGLFont, AmigaFont, APLFont,
-  FontScript, ScriptManager;
+  FontScript, ScriptManager, LConvEncoding;
 const
   ProgramName = 'RetroNick'#39's Bitmap Font Editor v1.2';
 type
+
+  TCharSetInfo = record
+    Caption: string;
+    CharSet: Byte;
+    EncodingName: string;
+  end;
 
   { TfrmMain }
 
@@ -126,6 +132,7 @@ type
 
     procedure cboShowBaselineChange(Sender: TObject);
     procedure cboShowGridChange(Sender: TObject);
+    procedure cmbCharSetChange(Sender: TObject);
     procedure chkLineMarkerChange(Sender: TObject);
     procedure mnuScriptClick(Sender: TObject);
     procedure spnLineMarkerChange(Sender: TObject);
@@ -203,6 +210,9 @@ type
     procedure UpdateStatus;
     procedure UpdateTitle;
     procedure UpdateLineMarkerDisplay;
+    procedure FillCharSetList;
+    function GetCharText(CharCode: Integer): string;
+    function GetPreviewBytes(const PreviewText: string): string;
     procedure SetPixel(X, Y: Integer; Value: Boolean);
     function GetPixelAt(SX, SY: Integer; out PX, PY: Integer): Boolean;
     procedure EnsureCharBitmap(Idx: Integer);
@@ -259,6 +269,64 @@ implementation
 
 {$R *.lfm}
 
+const
+  CharSetInfos: array[0..5] of TCharSetInfo = (
+    (Caption: 'ANSI (0)'; CharSet: 0; EncodingName: EncodingAnsi),
+    (Caption: 'Default (1)'; CharSet: 1; EncodingName: ''),
+    (Caption: 'Symbol (2)'; CharSet: 2; EncodingName: ''),
+    (Caption: 'OEM (255)'; CharSet: 255; EncodingName: ''),
+    (Caption: 'Cyrillic-1251(204)'; CharSet: 204; EncodingName: EncodingCP1251),
+    (Caption: 'Greek-1253(161)'; CharSet: 161; EncodingName: EncodingCP1253)
+  );
+
+procedure TfrmMain.FillCharSetList;
+var
+  CharSetIndex: Integer;
+begin
+  cmbCharSet.Items.BeginUpdate;
+  try
+    cmbCharSet.Items.Clear;
+    for CharSetIndex := Low(CharSetInfos) to High(CharSetInfos) do
+      cmbCharSet.Items.Add(CharSetInfos[CharSetIndex].Caption);
+  finally
+    cmbCharSet.Items.EndUpdate;
+  end;
+  cmbCharSet.ItemIndex := 0;
+end;
+
+function TfrmMain.GetCharText(CharCode: Integer): string;
+var
+  RawText: string;
+  CharSetInfo: TCharSetInfo;
+begin
+  Result := '';
+  if (CharCode < 0) or (CharCode > 255) then Exit;
+
+  RawText := Chr(CharCode);
+  if (cmbCharSet.ItemIndex >= Low(CharSetInfos)) and (cmbCharSet.ItemIndex <= High(CharSetInfos)) then
+  begin
+    CharSetInfo := CharSetInfos[cmbCharSet.ItemIndex];
+    if CharSetInfo.EncodingName <> '' then
+      Result := ConvertEncoding(RawText, CharSetInfo.EncodingName, EncodingUTF8)
+    else
+      Result := RawText;
+  end
+  else
+    Result := RawText;
+end;
+
+function TfrmMain.GetPreviewBytes(const PreviewText: string): string;
+var
+  CharSetInfo: TCharSetInfo;
+begin
+  Result := PreviewText;
+  if (cmbCharSet.ItemIndex < Low(CharSetInfos)) or (cmbCharSet.ItemIndex > High(CharSetInfos)) then Exit;
+
+  CharSetInfo := CharSetInfos[cmbCharSet.ItemIndex];
+  if CharSetInfo.EncodingName <> '' then
+    Result := ConvertEncoding(PreviewText, EncodingUTF8, CharSetInfo.EncodingName);
+end;
+
 procedure TfrmMain.FormCreate(Sender: TObject);
 var
   I: Integer;
@@ -298,8 +366,7 @@ begin
     FCharEnabled[I] := (I >= 32) and (I <= 127);
   end;
   
-  cmbCharSet.Items.AddStrings(['ANSI (0)', 'Default (1)', 'Symbol (2)', 'OEM (255)']);
-  cmbCharSet.ItemIndex := 0;
+  FillCharSetList;
   
   cmbPitchFamily.Items.AddStrings(['Default', 'Fixed', 'Variable', 'Roman', 'Swiss', 'Modern', 'Script', 'Decorative']);
   cmbPitchFamily.ItemIndex := 2;
@@ -559,7 +626,7 @@ begin
     if odSelected in State then Brush.Color := clHighlight else Brush.Color := clWindow;
     FillRect(ARect);
     if odSelected in State then Font.Color := clHighlightText else Font.Color := clWindowText;
-    if (CC >= 32) and (CC < 127) then S := Format('%3d ''%s''', [CC, Chr(CC)])
+    if (CC >= 32) and (CC <> 127) then S := Format('%3d ''%s''', [CC, GetCharText(CC)])
     else if CC = 127 then S := '127 DEL'
     else S := Format('%3d #%d', [CC, CC]);
     TextOut(ARect.Left + 4, ARect.Top + 2, S);
@@ -584,8 +651,8 @@ begin
   begin
     FCurrentChar := PtrInt(lstChars.Items.Objects[lstChars.ItemIndex]);
     EnsureCharBitmap(FCurrentChar);
-    if (FCurrentChar >= 32) and (FCurrentChar < 127) then
-      lblCurrentChar.Caption := Format('Editing: %d ''%s''', [FCurrentChar, Chr(FCurrentChar)])
+    if (FCurrentChar >= 32) and (FCurrentChar <> 127) then
+      lblCurrentChar.Caption := Format('Editing: %d ''%s''', [FCurrentChar, GetCharText(FCurrentChar)])
     else
       lblCurrentChar.Caption := Format('Editing: %d', [FCurrentChar]);
     spnCharWidth.Value := FCharBitmaps[FCurrentChar].Width;
@@ -829,7 +896,8 @@ end;
 
 procedure TfrmMain.pnlPreviewPaint(Sender: TObject);
 var
-  I, X, Y, CharX, Scale: Integer;
+  I, X, Y, CharX, Scale, CharCode: Integer;
+  PreviewBytes: string;
   Bmp: TBitmap;
   PB: TPaintBox;
 begin
@@ -840,9 +908,11 @@ begin
   begin
     Brush.Color := clWhite;
     FillRect(0, 0, PB.Width, PB.Height);
-    for I := 1 to Length(edtPreviewText.Text) do
+    PreviewBytes := GetPreviewBytes(edtPreviewText.Text);
+    for I := 1 to Length(PreviewBytes) do
     begin
-      Bmp := FCharBitmaps[Ord(edtPreviewText.Text[I])];
+      CharCode := Ord(PreviewBytes[I]);
+      Bmp := FCharBitmaps[CharCode];
       if Bmp <> nil then
       begin
         for Y := 0 to Bmp.Height - 1 do
@@ -2557,6 +2627,15 @@ begin
   FShowDescenderLine := chkShowDescender.Checked;
   FShowXHeightLine := chkShowXHeight.Checked;
   pnlCharEdit.Repaint;
+end;
+
+procedure TfrmMain.cmbCharSetChange(Sender: TObject);
+begin
+  if FInitializing then Exit;
+
+  lstChars.Invalidate;
+  lstCharsClick(nil);
+  UpdatePreview;
 end;
 
 procedure TfrmMain.mnuScriptClick(Sender: TObject);

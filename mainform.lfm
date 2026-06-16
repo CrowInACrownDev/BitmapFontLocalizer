@@ -127,6 +127,7 @@ object frmMain: TfrmMain
       Top = 108
       Width = 100
       ItemHeight = 15
+      OnChange = cmbCharSetChange
       Style = csDropDownList
       TabOrder = 7
     end
