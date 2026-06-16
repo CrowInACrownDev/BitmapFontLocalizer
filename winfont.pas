@@ -484,8 +484,9 @@ begin
   begin
     Stream.Position := Offset + FaceNameOffset;
     FFontName := '';
-    for I := 1 to 32 do
+    for I := 1 to 255 do
     begin
+      if Stream.Position >= Offset + Size then Break;
       Stream.Read(C, 1);
       if C = #0 then Break;
       FFontName := FFontName + C;

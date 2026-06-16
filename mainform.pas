@@ -1994,6 +1994,7 @@ begin
     end;
     
     edtFontName.Text := FONFont.FontName;
+    edtCopyright.Text := FONFont.Copyright;
     spnHeight.Value := FONFont.Height;
     spnAscent.Value := FONFont.Ascent;
     SelectCharSet(FONFont.CharSet);
