@@ -213,6 +213,8 @@ type
     procedure FillCharSetList;
     function GetCharText(CharCode: Integer): string;
     function GetPreviewBytes(const PreviewText: string): string;
+    function GetSelectedCharSet: Byte;
+    procedure SelectCharSet(CharSet: Byte);
     procedure SetPixel(X, Y: Integer; Value: Boolean);
     function GetPixelAt(SX, SY: Integer; out PX, PY: Integer): Boolean;
     procedure EnsureCharBitmap(Idx: Integer);
@@ -325,6 +327,33 @@ begin
   CharSetInfo := CharSetInfos[cmbCharSet.ItemIndex];
   if CharSetInfo.EncodingName <> '' then
     Result := ConvertEncoding(PreviewText, EncodingUTF8, CharSetInfo.EncodingName);
+end;
+
+function TfrmMain.GetSelectedCharSet: Byte;
+begin
+  Result := 0;
+  if (cmbCharSet.ItemIndex >= Low(CharSetInfos)) and (cmbCharSet.ItemIndex <= High(CharSetInfos)) then
+    Result := CharSetInfos[cmbCharSet.ItemIndex].CharSet;
+end;
+
+procedure TfrmMain.SelectCharSet(CharSet: Byte);
+var
+  CharSetIndex: Integer;
+  WasInitializing: Boolean;
+begin
+  WasInitializing := FInitializing;
+  FInitializing := True;
+  try
+    cmbCharSet.ItemIndex := 0;
+    for CharSetIndex := Low(CharSetInfos) to High(CharSetInfos) do
+      if CharSetInfos[CharSetIndex].CharSet = CharSet then
+      begin
+        cmbCharSet.ItemIndex := CharSetIndex;
+        Break;
+      end;
+  finally
+    FInitializing := WasInitializing;
+  end;
 end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
@@ -1967,6 +1996,7 @@ begin
     edtFontName.Text := FONFont.FontName;
     spnHeight.Value := FONFont.Height;
     spnAscent.Value := FONFont.Ascent;
+    SelectCharSet(FONFont.CharSet);
     CH := FONFont.Height;
     
     for I := FONFont.FirstChar to FONFont.LastChar do
@@ -2001,7 +2031,6 @@ procedure TfrmMain.btnSaveFontClick(Sender: TObject);
 var
   I: Integer;
   PF: TFontPitchFamily;
-  CS: TFontCharSet;
   SaveFileName: string;
 begin
   // Filter indices: 1=FON, 2=FNT, 3=ROM, 4=Deluxe Paint, 5=TEGL, 6=APL, 7=Amiga, 8=All
@@ -2049,10 +2078,7 @@ begin
             if cboBold.Checked then FCreator.Weight := fwBold else FCreator.Weight := fwNormal;
             FCreator.Italic := cboItalic.Checked;
             FCreator.Underline := cboUnderline.Checked;
-            case cmbCharSet.ItemIndex of
-              0: CS := csANSI; 1: CS := csDefault; 2: CS := csSymbol; 3: CS := csOEM;
-            else CS := csANSI; end;
-            FCreator.CharSet := CS;
+            FCreator.CharSet := GetSelectedCharSet;
             case cmbPitchFamily.ItemIndex of
               0: PF := pfDefault; 1: PF := pfFixed; 2: PF := pfVariable;
               3: PF := pfRoman; 4: PF := pfSwiss; 5: PF := pfModern;
@@ -2128,10 +2154,7 @@ begin
           if cboBold.Checked then FCreator.Weight := fwBold else FCreator.Weight := fwNormal;
           FCreator.Italic := cboItalic.Checked;
           FCreator.Underline := cboUnderline.Checked;
-          case cmbCharSet.ItemIndex of
-            0: CS := csANSI; 1: CS := csDefault; 2: CS := csSymbol; 3: CS := csOEM;
-          else CS := csANSI; end;
-          FCreator.CharSet := CS;
+          FCreator.CharSet := GetSelectedCharSet;
           case cmbPitchFamily.ItemIndex of
             0: PF := pfDefault; 1: PF := pfFixed; 2: PF := pfVariable;
             3: PF := pfRoman; 4: PF := pfSwiss; 5: PF := pfModern;
@@ -2182,6 +2205,7 @@ var
   FontDlg: TFontDialog;
   TempBmp: TBitmap;
   I, TW, TH: Integer;
+  CharText: string;
 begin
   FontDlg := TFontDialog.Create(nil);
   try
@@ -2200,7 +2224,8 @@ begin
         spnAscent.Value := TH - 3;
         for I := 32 to 255 do
         begin
-          TW := TempBmp.Canvas.TextWidth(Chr(I));
+          CharText := GetCharText(I);
+          TW := TempBmp.Canvas.TextWidth(CharText);
           if TW < 1 then TW := 4;
           FCharBitmaps[I] := TBitmap.Create;
           FCharBitmaps[I].Width := TW;
@@ -2210,7 +2235,7 @@ begin
           FCharBitmaps[I].Canvas.Font.Assign(FontDlg.Font);
           FCharBitmaps[I].Canvas.Font.Quality := fqNonAntialiased;
           FCharBitmaps[I].Canvas.Font.Color := clBlack;
-          FCharBitmaps[I].Canvas.TextOut(0, 0, Chr(I));
+          FCharBitmaps[I].Canvas.TextOut(0, 0, CharText);
         end;
         edtFontName.Text := FontDlg.Font.Name;
         FCurrentFile := '';

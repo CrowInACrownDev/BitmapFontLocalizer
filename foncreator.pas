@@ -62,13 +62,16 @@ type
   );
   
   { Font character set }
-  TFontCharSet = (
-    csANSI = 0,
-    csDefault = 1,
-    csSymbol = 2,
-    csShiftJIS = 128,
-    csOEM = 255
-  );
+  TFontCharSet = Byte;
+
+const
+  csANSI = 0;
+  csDefault = 1;
+  csSymbol = 2;
+  csShiftJIS = 128;
+  csOEM = 255;
+
+type
   
   { Font pitch and family }
   TFontPitchFamily = (
@@ -488,7 +491,7 @@ begin
   WriteWord(FNT, Word(FWeight));
   
   // Offset 85: dfCharSet (BYTE)
-  WriteByte(FNT, Byte(FCharSet));
+  WriteByte(FNT, FCharSet);
   
   // Offset 86: dfPixWidth (WORD) - 0 for proportional
   WriteWord(FNT, 0);

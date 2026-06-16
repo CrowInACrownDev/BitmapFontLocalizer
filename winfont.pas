@@ -69,6 +69,7 @@ type
     FFirstChar: Integer;
     FLastChar: Integer;
     FDefaultChar: Integer;
+    FCharSet: Byte;
     FGlyphs: array[0..MAX_GLYPHS-1] of TGlyph;
     FScale: Single;
     FColor: LongWord;
@@ -115,6 +116,7 @@ type
     property Color: LongWord read FColor write FColor;
     property FirstChar: Integer read FFirstChar;
     property LastChar: Integer read FLastChar;
+    property CharSet: Byte read FCharSet;
     property DebugMode: Boolean read FDebugMode write FDebugMode;
   end;
 
@@ -135,6 +137,7 @@ begin
   FFirstChar := 32;
   FLastChar := 127;
   FDefaultChar := 32;
+  FCharSet := 0;
   FDebugMode := False;
   
   for I := 0 to MAX_GLYPHS - 1 do
@@ -170,6 +173,7 @@ begin
   FFontType := ftUnknown;
   FFontName := '';
   FCopyright := '';
+  FCharSet := 0;
 end;
 
 procedure TWinFont.DebugLog(const Msg: string);
@@ -452,6 +456,11 @@ begin
   FAscent := ReadWord(Stream);
   DebugLog(Format('Ascent: %d', [FAscent]));
   
+  // CharSet at offset 85
+  Stream.Position := Offset + 85;
+  FCharSet := ReadByte(Stream);
+  DebugLog(Format('CharSet: %d', [FCharSet]));
+
   // Skip to pixel height at offset 88
   Stream.Position := Offset + 88;
   PixHeight := ReadWord(Stream);
