@@ -15,7 +15,9 @@ type
   TCharSetInfo = record
     Caption: string;
     CharSet: Byte;
+    CodePage: Integer;
     EncodingName: string;
+    Custom: Boolean;
   end;
 
   { TfrmMain }
@@ -33,6 +35,7 @@ type
     btnCopyChar: TButton;
     btnPasteChar: TButton;
     btnApplyRange: TButton;
+    btnAddCustomCharSet: TButton;
     btnResetLines: TButton;
     btnScanLines: TButton;
     cboBold: TCheckBox;
@@ -44,6 +47,7 @@ type
     chkShowDescender: TCheckBox;
     chkShowXHeight: TCheckBox;
     cmbCharSet: TComboBox;
+    cmbCustomEncoding: TComboBox;
     cmbPitchFamily: TComboBox;
     cmbZoom: TComboBox;
     edtCopyright: TEdit;
@@ -57,6 +61,8 @@ type
     lblCharSet: TLabel;
     lblCopyright: TLabel;
     lblCurrentChar: TLabel;
+    lblCustomCharSet: TLabel;
+    lblCustomEncoding: TLabel;
     lblFontName: TLabel;
     lblHeight: TLabel;
     lblPitchFamily: TLabel;
@@ -107,6 +113,7 @@ type
     sbCharEdit: TScrollBox;
     mnuSep8: TMenuItem;
     spnAscent: TSpinEdit;
+    spnCustomCharSet: TSpinEdit;
     spnHeight: TSpinEdit;
     spnPointSize: TSpinEdit;
     spnCharWidth: TSpinEdit;
@@ -118,6 +125,7 @@ type
     StatusBar: TStatusBar;
     tmrPreview: TTimer;
     procedure btnApplyRangeClick(Sender: TObject);
+    procedure btnAddCustomCharSetClick(Sender: TObject);
     procedure btnClearAllClick(Sender: TObject);
     procedure btnClearCharClick(Sender: TObject);
     procedure btnCopyCharClick(Sender: TObject);
@@ -137,6 +145,7 @@ type
     procedure cboShowBaselineChange(Sender: TObject);
     procedure cboShowGridChange(Sender: TObject);
     procedure cmbCharSetChange(Sender: TObject);
+    procedure CustomCharSetChange(Sender: TObject);
     procedure chkLineMarkerChange(Sender: TObject);
     procedure mnuScriptClick(Sender: TObject);
     procedure spnLineMarkerChange(Sender: TObject);
@@ -194,6 +203,7 @@ type
     FCharRangeStart: Integer;
     FCharRangeEnd: Integer;
     FCharEnabled: array[0..255] of Boolean;
+    FCharSetInfos: array of TCharSetInfo;
     
     // Line markers
     FShowAscenderLine: Boolean;
@@ -221,7 +231,19 @@ type
     procedure UpdateStatus;
     procedure UpdateTitle;
     procedure UpdateLineMarkerDisplay;
+    function NormalizeCustomEncodingName(const EncodingName: string): string;
+    function FindCharSetInfo(CharSet: Byte; const EncodingName: string): Integer;
+    function FindCharSetInfoByEncoding(const EncodingName: string): Integer;
+    function GetCharSetInfo(Index: Integer; out CharSetInfo: TCharSetInfo): Boolean;
+    procedure AddCharSetInfo(const CharSetInfo: TCharSetInfo);
+    function GetCustomCharSetExistingIndex: Integer;
+    procedure FillCustomEncodingList;
+    procedure UpdateCustomCharSetIndexFromEncoding;
+    procedure UpdateCustomCharSetInputs;
     procedure FillCharSetList;
+    procedure UpdateCustomCharSetControls;
+    procedure UpdateCustomCharSetButton;
+    function GetSelectedEncodingName: string;
     function GetCharText(CharCode: Integer): string;
     function GetPreviewBytes(const PreviewText: string): string;
     function GetSelectedCharSet: Byte;
@@ -286,15 +308,210 @@ implementation
 
 {$R *.lfm}
 
+{$IFDEF Windows}
 const
-  CharSetInfos: array[0..5] of TCharSetInfo = (
-    (Caption: 'ANSI (0)'; CharSet: 0; EncodingName: EncodingAnsi),
-    (Caption: 'Default (1)'; CharSet: 1; EncodingName: ''),
-    (Caption: 'Symbol (2)'; CharSet: 2; EncodingName: ''),
-    (Caption: 'OEM (255)'; CharSet: 255; EncodingName: ''),
-    (Caption: 'Cyrillic-1251(204)'; CharSet: 204; EncodingName: EncodingCP1251),
-    (Caption: 'Greek-1253(161)'; CharSet: 161; EncodingName: EncodingCP1253)
+  CP_SUPPORTED = $00000002;
+
+type
+  TCodePageEnumProc = function(CodePageString: PChar): LongBool; stdcall;
+
+function EnumSystemCodePagesA(CodePageEnumProc: TCodePageEnumProc; Flags: Cardinal): LongBool; stdcall; external 'kernel32.dll';
+{$ENDIF}
+
+const
+  DefaultCharSetInfos: array[0..17] of TCharSetInfo = (
+    (Caption: 'ANSI / System (0)'; CharSet: 0; CodePage: 0; EncodingName: EncodingAnsi; Custom: False),
+    (Caption: 'Default (1)'; CharSet: 1; CodePage: 0; EncodingName: ''; Custom: False),
+    (Caption: 'Symbol (2)'; CharSet: 2; CodePage: 0; EncodingName: ''; Custom: False),
+    (Caption: 'OEM / System (255)'; CharSet: 255; CodePage: 0; EncodingName: ''; Custom: False),
+    (Caption: 'Western European / CP1252 (0)'; CharSet: 0; CodePage: 1252; EncodingName: EncodingCP1252; Custom: False),
+    (Caption: 'Central European / CP1250 (238)'; CharSet: 238; CodePage: 1250; EncodingName: EncodingCP1250; Custom: False),
+    (Caption: 'Cyrillic / CP1251 (204)'; CharSet: 204; CodePage: 1251; EncodingName: EncodingCP1251; Custom: False),
+    (Caption: 'Greek / CP1253 (161)'; CharSet: 161; CodePage: 1253; EncodingName: EncodingCP1253; Custom: False),
+    (Caption: 'Turkish / CP1254 (162)'; CharSet: 162; CodePage: 1254; EncodingName: EncodingCP1254; Custom: False),
+    (Caption: 'Hebrew / CP1255 (177)'; CharSet: 177; CodePage: 1255; EncodingName: EncodingCP1255; Custom: False),
+    (Caption: 'Arabic / CP1256 (178)'; CharSet: 178; CodePage: 1256; EncodingName: EncodingCP1256; Custom: False),
+    (Caption: 'Baltic / CP1257 (186)'; CharSet: 186; CodePage: 1257; EncodingName: EncodingCP1257; Custom: False),
+    (Caption: 'Vietnamese / CP1258 (163)'; CharSet: 163; CodePage: 1258; EncodingName: EncodingCP1258; Custom: False),
+    (Caption: 'Thai / CP874 (222)'; CharSet: 222; CodePage: 874; EncodingName: EncodingCP874; Custom: False),
+    (Caption: 'Japanese Shift-JIS / CP932 (128)'; CharSet: 128; CodePage: 932; EncodingName: EncodingCP932; Custom: False),
+    (Caption: 'Korean Hangul / CP949 (129)'; CharSet: 129; CodePage: 949; EncodingName: EncodingCP949; Custom: False),
+    (Caption: 'Simplified Chinese GB2312 / CP936 (134)'; CharSet: 134; CodePage: 936; EncodingName: EncodingCP936; Custom: False),
+    (Caption: 'Traditional Chinese Big5 / CP950 (136)'; CharSet: 136; CodePage: 950; EncodingName: EncodingCP950; Custom: False)
   );
+
+var
+  SystemEncodingItems: TStrings;
+
+{$IFDEF Windows}
+function AddSystemCodePage(CodePageString: PChar): LongBool; stdcall;
+var
+  EncodingName: string;
+begin
+  EncodingName := 'cp' + string(CodePageString);
+  if (SystemEncodingItems <> nil) and (SystemEncodingItems.IndexOf(EncodingName) < 0) then
+    SystemEncodingItems.Add(EncodingName);
+  Result := True;
+end;
+{$ENDIF}
+
+function TfrmMain.NormalizeCustomEncodingName(const EncodingName: string): string;
+var
+  S: string;
+begin
+  S := Trim(LowerCase(EncodingName));
+  if Copy(S, 1, 8) = 'windows-' then
+    Result := 'cp' + Copy(S, 9, MaxInt)
+  else if Copy(S, 1, 7) = 'windows' then
+    Result := 'cp' + Copy(S, 8, MaxInt)
+  else
+    Result := S;
+end;
+
+function TfrmMain.FindCharSetInfo(CharSet: Byte; const EncodingName: string): Integer;
+var
+  CharSetIndex: Integer;
+  NormalizedEncodingName: string;
+begin
+  Result := -1;
+  NormalizedEncodingName := NormalizeCustomEncodingName(EncodingName);
+  for CharSetIndex := Low(FCharSetInfos) to High(FCharSetInfos) do
+    if (FCharSetInfos[CharSetIndex].CharSet = CharSet) and
+      (NormalizeCustomEncodingName(FCharSetInfos[CharSetIndex].EncodingName) = NormalizedEncodingName) then
+    begin
+      Result := CharSetIndex;
+      Exit;
+    end;
+end;
+
+function TfrmMain.FindCharSetInfoByEncoding(const EncodingName: string): Integer;
+var
+  CharSetIndex: Integer;
+  NormalizedEncodingName: string;
+begin
+  Result := -1;
+  NormalizedEncodingName := NormalizeCustomEncodingName(EncodingName);
+  if NormalizedEncodingName = '' then Exit;
+
+  for CharSetIndex := Low(FCharSetInfos) to High(FCharSetInfos) do
+    if NormalizeCustomEncodingName(FCharSetInfos[CharSetIndex].EncodingName) = NormalizedEncodingName then
+    begin
+      Result := CharSetIndex;
+      Exit;
+    end;
+end;
+
+function TfrmMain.GetCharSetInfo(Index: Integer; out CharSetInfo: TCharSetInfo): Boolean;
+begin
+  Result := (Index >= Low(FCharSetInfos)) and (Index <= High(FCharSetInfos));
+  if Result then
+    CharSetInfo := FCharSetInfos[Index];
+end;
+
+procedure TfrmMain.AddCharSetInfo(const CharSetInfo: TCharSetInfo);
+var
+  NewIndex: Integer;
+begin
+  NewIndex := Length(FCharSetInfos);
+  SetLength(FCharSetInfos, NewIndex + 1);
+  FCharSetInfos[NewIndex] := CharSetInfo;
+  cmbCharSet.Items.Add(CharSetInfo.Caption);
+end;
+
+function TfrmMain.GetCustomCharSetExistingIndex: Integer;
+begin
+  if NormalizeCustomEncodingName(cmbCustomEncoding.Text) = '' then
+    Result := -1
+  else
+    Result := FindCharSetInfo(Byte(spnCustomCharSet.Value), cmbCustomEncoding.Text);
+end;
+
+procedure TfrmMain.FillCustomEncodingList;
+var
+  EncodingNames: TStringList;
+
+  procedure AddEncodingName(const EncodingName: string);
+  var
+    NormalizedName: string;
+  begin
+    NormalizedName := NormalizeCustomEncodingName(EncodingName);
+    if (NormalizedName <> '') and (EncodingNames.IndexOf(NormalizedName) < 0) then
+      EncodingNames.Add(NormalizedName);
+  end;
+
+begin
+  EncodingNames := TStringList.Create;
+  try
+    AddEncodingName(EncodingAnsi);
+    {$IFDEF Windows}
+    SystemEncodingItems := EncodingNames;
+    try
+      EnumSystemCodePagesA(@AddSystemCodePage, CP_SUPPORTED);
+    finally
+      SystemEncodingItems := nil;
+    end;
+    {$ENDIF}
+
+    AddEncodingName(EncodingCP1250);
+    AddEncodingName(EncodingCP1251);
+    AddEncodingName(EncodingCP1252);
+    AddEncodingName(EncodingCP1253);
+    AddEncodingName(EncodingCP1254);
+    AddEncodingName(EncodingCP1255);
+    AddEncodingName(EncodingCP1256);
+    AddEncodingName(EncodingCP1257);
+    AddEncodingName(EncodingCP1258);
+    AddEncodingName(EncodingCP874);
+    AddEncodingName(EncodingCP932);
+    AddEncodingName(EncodingCP936);
+    AddEncodingName(EncodingCP949);
+    AddEncodingName(EncodingCP950);
+    AddEncodingName(EncodingCP437);
+    AddEncodingName(EncodingCP850);
+    AddEncodingName(EncodingCP852);
+    AddEncodingName(EncodingCP866);
+
+    EncodingNames.Sort;
+    cmbCustomEncoding.Items.Assign(EncodingNames);
+  finally
+    EncodingNames.Free;
+  end;
+end;
+
+procedure TfrmMain.UpdateCustomCharSetIndexFromEncoding;
+var
+  CharSetIndex: Integer;
+  WasInitializing: Boolean;
+begin
+  CharSetIndex := FindCharSetInfoByEncoding(cmbCustomEncoding.Text);
+  if CharSetIndex < 0 then Exit;
+
+  WasInitializing := FInitializing;
+  FInitializing := True;
+  try
+    spnCustomCharSet.Value := FCharSetInfos[CharSetIndex].CharSet;
+  finally
+    FInitializing := WasInitializing;
+  end;
+end;
+
+procedure TfrmMain.UpdateCustomCharSetInputs;
+var
+  CharSetInfo: TCharSetInfo;
+  WasInitializing: Boolean;
+begin
+  if not GetCharSetInfo(cmbCharSet.ItemIndex, CharSetInfo) then Exit;
+
+  WasInitializing := FInitializing;
+  FInitializing := True;
+  try
+    spnCustomCharSet.Value := CharSetInfo.CharSet;
+    cmbCustomEncoding.Text := CharSetInfo.EncodingName;
+  finally
+    FInitializing := WasInitializing;
+  end;
+  UpdateCustomCharSetButton;
+end;
 
 procedure TfrmMain.FillCharSetList;
 var
@@ -303,69 +520,121 @@ begin
   cmbCharSet.Items.BeginUpdate;
   try
     cmbCharSet.Items.Clear;
-    for CharSetIndex := Low(CharSetInfos) to High(CharSetInfos) do
-      cmbCharSet.Items.Add(CharSetInfos[CharSetIndex].Caption);
+    SetLength(FCharSetInfos, 0);
+    for CharSetIndex := Low(DefaultCharSetInfos) to High(DefaultCharSetInfos) do
+      AddCharSetInfo(DefaultCharSetInfos[CharSetIndex]);
   finally
     cmbCharSet.Items.EndUpdate;
   end;
   cmbCharSet.ItemIndex := 0;
+
+  cmbCustomEncoding.Items.BeginUpdate;
+  try
+    cmbCustomEncoding.Items.Clear;
+    FillCustomEncodingList;
+  finally
+    cmbCustomEncoding.Items.EndUpdate;
+  end;
+  cmbCustomEncoding.Text := EncodingCP1252;
+  spnCustomCharSet.Value := 0;
+  UpdateCustomCharSetInputs;
+  UpdateCustomCharSetControls;
+end;
+
+procedure TfrmMain.UpdateCustomCharSetControls;
+begin
+  lblCustomCharSet.Enabled := True;
+  lblCustomEncoding.Enabled := True;
+  spnCustomCharSet.Enabled := True;
+  cmbCustomEncoding.Enabled := True;
+  UpdateCustomCharSetButton;
+end;
+
+procedure TfrmMain.UpdateCustomCharSetButton;
+begin
+  btnAddCustomCharSet.Enabled := NormalizeCustomEncodingName(cmbCustomEncoding.Text) <> '';
+  if GetCustomCharSetExistingIndex >= 0 then
+    btnAddCustomCharSet.Caption := 'Select'
+  else
+    btnAddCustomCharSet.Caption := 'Add';
+end;
+
+function TfrmMain.GetSelectedEncodingName: string;
+var
+  CharSetInfo: TCharSetInfo;
+begin
+  Result := '';
+  if GetCharSetInfo(cmbCharSet.ItemIndex, CharSetInfo) then
+    Result := CharSetInfo.EncodingName;
 end;
 
 function TfrmMain.GetCharText(CharCode: Integer): string;
 var
   RawText: string;
-  CharSetInfo: TCharSetInfo;
+  EncodingName: string;
 begin
   Result := '';
   if (CharCode < 0) or (CharCode > 255) then Exit;
 
   RawText := Chr(CharCode);
-  if (cmbCharSet.ItemIndex >= Low(CharSetInfos)) and (cmbCharSet.ItemIndex <= High(CharSetInfos)) then
-  begin
-    CharSetInfo := CharSetInfos[cmbCharSet.ItemIndex];
-    if CharSetInfo.EncodingName <> '' then
-      Result := ConvertEncoding(RawText, CharSetInfo.EncodingName, EncodingUTF8)
-    else
-      Result := RawText;
-  end
+  EncodingName := GetSelectedEncodingName;
+  if EncodingName <> '' then
+    Result := ConvertEncoding(RawText, EncodingName, EncodingUTF8)
   else
     Result := RawText;
 end;
 
 function TfrmMain.GetPreviewBytes(const PreviewText: string): string;
 var
-  CharSetInfo: TCharSetInfo;
+  EncodingName: string;
 begin
   Result := PreviewText;
-  if (cmbCharSet.ItemIndex < Low(CharSetInfos)) or (cmbCharSet.ItemIndex > High(CharSetInfos)) then Exit;
 
-  CharSetInfo := CharSetInfos[cmbCharSet.ItemIndex];
-  if CharSetInfo.EncodingName <> '' then
-    Result := ConvertEncoding(PreviewText, EncodingUTF8, CharSetInfo.EncodingName);
+  EncodingName := GetSelectedEncodingName;
+  if EncodingName <> '' then
+    Result := ConvertEncoding(PreviewText, EncodingUTF8, EncodingName);
 end;
 
 function TfrmMain.GetSelectedCharSet: Byte;
+var
+  CharSetInfo: TCharSetInfo;
 begin
   Result := 0;
-  if (cmbCharSet.ItemIndex >= Low(CharSetInfos)) and (cmbCharSet.ItemIndex <= High(CharSetInfos)) then
-    Result := CharSetInfos[cmbCharSet.ItemIndex].CharSet;
+  if GetCharSetInfo(cmbCharSet.ItemIndex, CharSetInfo) then
+    Result := CharSetInfo.CharSet;
 end;
 
 procedure TfrmMain.SelectCharSet(CharSet: Byte);
 var
+  CharSetInfo: TCharSetInfo;
   CharSetIndex: Integer;
+  Found: Boolean;
   WasInitializing: Boolean;
 begin
   WasInitializing := FInitializing;
   FInitializing := True;
   try
     cmbCharSet.ItemIndex := 0;
-    for CharSetIndex := Low(CharSetInfos) to High(CharSetInfos) do
-      if CharSetInfos[CharSetIndex].CharSet = CharSet then
+    Found := False;
+    for CharSetIndex := Low(FCharSetInfos) to High(FCharSetInfos) do
+      if FCharSetInfos[CharSetIndex].CharSet = CharSet then
       begin
         cmbCharSet.ItemIndex := CharSetIndex;
+        Found := True;
         Break;
       end;
+    if not Found then
+    begin
+      CharSetInfo.Caption := Format('Custom / Charset %d', [CharSet]);
+      CharSetInfo.CharSet := CharSet;
+      CharSetInfo.CodePage := 0;
+      CharSetInfo.EncodingName := '';
+      CharSetInfo.Custom := False;
+      AddCharSetInfo(CharSetInfo);
+      cmbCharSet.ItemIndex := High(FCharSetInfos);
+    end;
+    UpdateCustomCharSetInputs;
+    UpdateCustomCharSetControls;
   finally
     FInitializing := WasInitializing;
   end;
@@ -697,6 +966,41 @@ begin
   FCharRangeEnd := spnRangeEnd.Value;
   ApplyCharRange;
   StatusBar.Panels[0].Text := Format('Character range: %d to %d', [FCharRangeStart, FCharRangeEnd]);
+end;
+
+procedure TfrmMain.btnAddCustomCharSetClick(Sender: TObject);
+var
+  CharSetInfo: TCharSetInfo;
+  EncodingName: string;
+  ExistingIndex: Integer;
+begin
+  EncodingName := NormalizeCustomEncodingName(cmbCustomEncoding.Text);
+  if EncodingName = '' then
+  begin
+    ShowMessage('Please enter encoding name');
+    Exit;
+  end;
+
+  if cmbCustomEncoding.Items.IndexOf(EncodingName) < 0 then
+    cmbCustomEncoding.Items.Add(EncodingName);
+
+  ExistingIndex := FindCharSetInfo(Byte(spnCustomCharSet.Value), EncodingName);
+  if ExistingIndex < 0 then
+  begin
+    CharSetInfo.Caption := Format('Custom / %s (%d)', [EncodingName, spnCustomCharSet.Value]);
+    CharSetInfo.CharSet := Byte(spnCustomCharSet.Value);
+    CharSetInfo.CodePage := 0;
+    CharSetInfo.EncodingName := EncodingName;
+    CharSetInfo.Custom := False;
+    AddCharSetInfo(CharSetInfo);
+    ExistingIndex := FindCharSetInfo(CharSetInfo.CharSet, CharSetInfo.EncodingName);
+  end;
+
+  if ExistingIndex >= 0 then
+  begin
+    cmbCharSet.ItemIndex := ExistingIndex;
+    cmbCharSetChange(nil);
+  end;
 end;
 
 procedure TfrmMain.lstCharsDrawItem(Control: TWinControl; Index: Integer;
@@ -2779,9 +3083,20 @@ procedure TfrmMain.cmbCharSetChange(Sender: TObject);
 begin
   if FInitializing then Exit;
 
+  UpdateCustomCharSetInputs;
+  UpdateCustomCharSetControls;
   InvalidateCharLists;
   lstCharsClick(nil);
   UpdatePreview;
+  SetModified(True);
+end;
+
+procedure TfrmMain.CustomCharSetChange(Sender: TObject);
+begin
+  if FInitializing then Exit;
+  if Sender = cmbCustomEncoding then
+    UpdateCustomCharSetIndexFromEncoding;
+  UpdateCustomCharSetButton;
 end;
 
 procedure TfrmMain.mnuScriptClick(Sender: TObject);

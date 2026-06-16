@@ -10,18 +10,18 @@ object frmMain: TfrmMain
   ClientWidth = 1057
   KeyPreview = True
   Menu = MainMenu
+  LCLVersion = '4.8.0.0'
   OnClose = FormClose
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnKeyDown = FormKeyDown
-  LCLVersion = '3.4.0.0'
   object gbFontProps: TGroupBox
     Left = 8
-    Height = 175
+    Height = 240
     Top = 8
     Width = 290
     Caption = 'Font Properties'
-    ClientHeight = 155
+    ClientHeight = 220
     ClientWidth = 286
     TabOrder = 0
     object lblFontName: TLabel
@@ -88,9 +88,9 @@ object frmMain: TfrmMain
       Width = 55
       MaxValue = 64
       MinValue = 4
-      OnChange = spnHeightChange
       TabOrder = 3
       Value = 12
+      OnChange = spnHeightChange
     end
     object cboBold: TCheckBox
       Left = 8
@@ -116,47 +116,88 @@ object frmMain: TfrmMain
       Caption = 'Underline'
       TabOrder = 6
     end
-    object lblCharSet: TLabel
-      Left = 8
-      Height = 15
-      Top = 112
-      Width = 47
-      Caption = 'Char Set:'
-    end
-    object cmbCharSet: TComboBox
-      Left = 80
-      Height = 23
-      Top = 108
-      Width = 100
-      ItemHeight = 15
-      OnChange = cmbCharSetChange
-      Style = csDropDownList
-      TabOrder = 7
-    end
     object lblPitchFamily: TLabel
       Left = 8
       Height = 15
-      Top = 138
+      Top = 112
       Width = 38
       Caption = 'Family:'
     end
     object cmbPitchFamily: TComboBox
       Left = 80
       Height = 23
-      Top = 134
+      Top = 108
       Width = 100
       ItemHeight = 15
       Style = csDropDownList
+      TabOrder = 7
+    end
+    object lblCharSet: TLabel
+      Left = 8
+      Height = 15
+      Top = 138
+      Width = 47
+      Caption = 'Char Set:'
+    end
+    object cmbCharSet: TComboBox
+      Left = 80
+      Height = 23
+      Top = 134
+      Width = 200
+      ItemHeight = 15
+      Style = csDropDownList
       TabOrder = 8
+      OnChange = cmbCharSetChange
+    end
+    object lblCustomCharSet: TLabel
+      Left = 198
+      Height = 15
+      Top = 164
+      Width = 31
+      Caption = 'Index:'
+    end
+    object spnCustomCharSet: TSpinEdit
+      Left = 235
+      Height = 23
+      Top = 160
+      Width = 45
+      MaxValue = 255
+      TabOrder = 9
+      OnChange = CustomCharSetChange
+    end
+    object lblCustomEncoding: TLabel
+      Left = 8
+      Height = 15
+      Top = 164
+      Width = 53
+      Caption = 'Encoding:'
+    end
+    object cmbCustomEncoding: TComboBox
+      Left = 80
+      Height = 23
+      Top = 160
+      Width = 110
+      ItemHeight = 15
+      TabOrder = 10
+      OnChange = CustomCharSetChange
+    end
+    object btnAddCustomCharSet: TButton
+      Left = 80
+      Height = 23
+      Top = 186
+      Width = 200
+      Caption = 'Add'
+      TabOrder = 11
+      OnClick = btnAddCustomCharSetClick
     end
   end
   object gbCharList: TGroupBox
     Left = 8
-    Height = 474
-    Top = 190
+    Height = 460
+    Top = 256
     Width = 306
     Caption = 'Characters'
-    ClientHeight = 454
+    ClientHeight = 440
     ClientWidth = 302
     TabOrder = 1
     object lblRangeStart: TLabel
@@ -204,19 +245,19 @@ object frmMain: TfrmMain
       Left = 8
       Height = 15
       Top = 32
-      Width = 38
+      Width = 35
       Caption = '32-127'
     end
     object lblCharsHigh: TLabel
       Left = 154
       Height = 15
       Top = 32
-      Width = 44
+      Width = 41
       Caption = '128-255'
     end
     object lstChars: TListBox
       Left = 8
-      Height = 392
+      Height = 378
       Top = 52
       Width = 140
       ItemHeight = 0
@@ -227,7 +268,7 @@ object frmMain: TfrmMain
     end
     object lstCharsHigh: TListBox
       Left = 154
-      Height = 392
+      Height = 378
       Top = 52
       Width = 140
       ItemHeight = 0
@@ -328,9 +369,9 @@ object frmMain: TfrmMain
       Width = 55
       MaxValue = 64
       MinValue = 1
-      OnChange = spnCharWidthChange
       TabOrder = 3
       Value = 8
+      OnChange = spnCharWidthChange
     end
     object btnClearChar: TButton
       Left = 145
@@ -434,11 +475,11 @@ object frmMain: TfrmMain
   end
   object gbPreview: TGroupBox
     Left = 320
-    Height = 160
+    Height = 212
     Top = 504
     Width = 420
     Caption = 'Preview'
-    ClientHeight = 140
+    ClientHeight = 192
     ClientWidth = 416
     TabOrder = 3
     object lblPreviewText: TLabel
@@ -458,7 +499,7 @@ object frmMain: TfrmMain
     end
     object pnlPreview: TPaintBox
       Left = 2
-      Height = 96
+      Height = 148
       Top = 32
       Width = 408
       OnPaint = pnlPreviewPaint
@@ -524,9 +565,9 @@ object frmMain: TfrmMain
       Width = 60
       MaxValue = 100
       MinValue = -1
-      OnChange = spnLineMarkerChange
       TabOrder = 5
       Value = -1
+      OnChange = spnLineMarkerChange
     end
     object spnDescenderLine: TSpinEdit
       Left = 220
@@ -535,9 +576,9 @@ object frmMain: TfrmMain
       Width = 60
       MaxValue = 100
       MinValue = -1
-      OnChange = spnLineMarkerChange
       TabOrder = 6
       Value = -1
+      OnChange = spnLineMarkerChange
     end
     object spnXHeightLine: TSpinEdit
       Left = 220
@@ -546,9 +587,9 @@ object frmMain: TfrmMain
       Width = 60
       MaxValue = 100
       MinValue = -1
-      OnChange = spnLineMarkerChange
       TabOrder = 7
       Value = -1
+      OnChange = spnLineMarkerChange
     end
     object btnResetLines: TButton
       Left = 8
@@ -584,9 +625,9 @@ object frmMain: TfrmMain
       Width = 60
       MaxValue = 64
       MinValue = 1
-      OnChange = spnLineMarkerChange
       TabOrder = 4
       Value = 10
+      OnChange = spnLineMarkerChange
     end
   end
   object StatusBar: TStatusBar
